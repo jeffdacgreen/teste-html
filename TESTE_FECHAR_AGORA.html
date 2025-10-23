@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Detecção de Fechamento, Reload e Mudança de URL</title>
+  <style>
+    body { font-family: sans-serif; margin: 30px; background: #fafafa; }
+    #log {
+      background: #111;
+      color: #0f0;
+      padding: 15px;
+      border-radius: 8px;
+      height: 250px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    button { margin-top: 10px; padding: 8px 12px; }
+  </style>
+</head>
+<body>
+  <h2>Teste de eventos de descarregamento</h2>
+  <p>Tente recarregar (F5), mudar de URL ou fechar a aba para ver o log.</p>
+
+  <div id="log"></div>
+  <button id="clear">🧹 Limpar logs</button>
+
+  <script>
+    const logDiv = document.getElementById("log");
+    const clearBtn = document.getElementById("clear");
+
+    function log(msg) {
+      const time = new Date().toLocaleTimeString();
+      const entry = `[${time}] ${msg}`;
+      logDiv.innerHTML += entry + "\n";
+
+      const logs = JSON.parse(localStorage.getItem("logs") || "[]");
+      logs.push(entry);
+      localStorage.setItem("logs", JSON.stringify(logs));
+
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(entry);
+    }
+
+    // Mostra logs antigos
+    const oldLogs = JSON.parse(localStorage.getItem("logs") || "[]");
+    if (oldLogs.length) logDiv.innerHTML = oldLogs.join("\n") + "\n";
+
+    // Detecta tipo de navegação atual
+    const navType = performance.getEntriesByType("navigation")[0]?.type || "navigate";
+    log(`Navegação atual: ${navType}`);
+
+    // Verifica se houve reload
+    if (navType === "reload") {
+      log("🔁 Recarregamento detectado (F5)");
+    } else {
+      const lastExit = localStorage.getItem("lastExitType");
+      if (lastExit === "navigate") {
+        log("🔀 Mudança de URL detectada");
+      } else if (lastExit === "close") {
+        log("❌ Provável fechamento de aba/janela");
+      } else {
+        log("🆕 Primeira carga da página");
+      }
+    }
+
+    // Antes de sair
+    window.addEventListener("beforeunload", () => {
+      // Marcamos que o usuário está saindo via navegação
+      const nextType = performance.getEntriesByType("navigation")[0]?.type;
+      if (nextType === "reload") {
+        localStorage.setItem("lastExitType", "reload");
+      } else {
+        // Pode ser navegação ou fechamento
+        localStorage.setItem("lastExitType", "close");
+      }
+    });
+
+    // Limpar logs manualmente
+    clearBtn.addEventListener("click", () => {
+      localStorage.removeItem("logs");
+      logDiv.textContent = "";
+      log("🧹 Logs limpos manualmente.");
+    });
+  </script>
+</body>
+</html>
