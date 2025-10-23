@@ -25,6 +25,7 @@
 <script>
 (function(){
   const logDiv = document.getElementById('log');
+  const BEACON_URL = 'https://webhook.site/0cd31602-9d30-4d59-b31e-e45247293d16';
 
   // Função para adicionar log na tela e no localStorage
   function append(msg){
@@ -98,7 +99,12 @@
       append('A PÁGINA FOI ATUALIZADA COM F5 (OU CTRL+R, POR EXEMPLO)');
     } else if(!isNavigation){
       append('A PÁGINA FECHOU');
-      try { navigator.sendBeacon('/fake-endpoint', JSON.stringify({event:'fechamento', ts:new Date().toISOString()})); } catch(e){}
+      try {
+        navigator.sendBeacon(BEACON_URL, JSON.stringify({
+          event: 'fechamento',
+          ts: new Date().toISOString()
+        }));
+      } catch(e){}
     }
 
     // Atualiza último URL para próximo ciclo
