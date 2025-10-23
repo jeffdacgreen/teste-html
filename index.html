@@ -10,7 +10,7 @@
   </style>
 </head>
 <body>
-  <h2>Detector de Fechamento, Reload e Navegação</h2>
+  <h2>Detector de Fechamento e Reload</h2>
   <p>Testes: F5, Ctrl+R, botão de atualizar, digitar a mesma URL, clicar em links ou submeter formulários.</p>
 
   <div id="log"></div>
@@ -27,7 +27,6 @@
   const logDiv = document.getElementById('log');
   const BEACON_URL = 'https://webhook.site/0cd31602-9d30-4d59-b31e-e45247293d16';
 
-  // Função para adicionar log na tela e no localStorage
   function append(msg){
     const s = `[${new Date().toLocaleTimeString()}] ${msg}`;
     logDiv.innerText += s + "\n";
@@ -46,13 +45,13 @@
     if(old.length) logDiv.innerText = old.join("\n") + "\n";
   } catch(e){}
 
-  // Flags proativas
+  // Flags
   let isNavClick = false;
   let isFormSubmit = false;
-  let isHistoryNav = false;
+  let isReload = false;
 
-  // Captura clique em links
-  document.addEventListener('click', (ev) => {
+  // Detecta clique em links
+  document.addEventListener('click', ev => {
     const a = ev.target.closest && ev.target.closest('a[href]');
     if(a && a.getAttribute('target')!=='_blank'){
       isNavClick = true;
@@ -60,59 +59,39 @@
     }
   }, true);
 
-  // Captura submit de forms
-  document.addEventListener('submit', (ev)=>{
+  // Detecta submit de forms
+  document.addEventListener('submit', ev => {
     isFormSubmit = true;
     append('UM FORMULÁRIO FOI CLICADO');
   }, true);
 
-  // Captura navegações via history API (SPAs)
-  (function(){
-    const _push = history.pushState;
-    const _replace = history.replaceState;
-    history.pushState = function(){
-      isHistoryNav = true;
-      append('HOUVE MUDANÇA DE URL');
-      return _push.apply(this, arguments);
-    };
-    history.replaceState = function(){
-      isHistoryNav = true;
-      append('HOUVE MUDANÇA DE URL');
-      return _replace.apply(this, arguments);
-    };
-    window.addEventListener('popstate', ()=>{
-      isHistoryNav = true;
-      append('HOUVE MUDANÇA DE URL');
-    });
-  })();
-
-  // beforeunload: decide se é fechamento ou reload/navegação
-  window.addEventListener('beforeunload', ()=>{
-    const perfNav = performance.getEntriesByType("navigation")[0];
-    const navType = perfNav?.type || "navigate";
-    const lastUrl = localStorage.getItem('lastUrl') || location.href;
-
-    //const isReload = (navType === "reload") || (navType==="navigate" && lastUrl === location.href);
-    const isReload = navType === "reload";
-    const isNavigation = isNavClick || isFormSubmit || isHistoryNav || isReload;
-
-    if(isReload){
+  // Detecta F5/Ctrl+R
+  window.addEventListener('keydown', ev => {
+    if(ev.key === 'F5' || ((ev.ctrlKey || ev.metaKey) && (ev.key==='r' || ev.key==='R'))){
+      isReload = true;
       append('A PÁGINA FOI ATUALIZADA COM F5 (OU CTRL+R, POR EXEMPLO)');
-    } else if(!isNavigation){
+    }
+  }, {capture:true});
+
+  // beforeunload
+  window.addEventListener('beforeunload', ()=>{
+    const lastUrl = localStorage.getItem('lastUrl') || location.href;
+    const currentUrl = location.href;
+    const navReload = (lastUrl === currentUrl && isReload);
+
+    if(navReload){
+      // Já logado via keydown
+    } else if(!isNavClick && !isFormSubmit && !isReload){
       append('A PÁGINA FECHOU');
       try {
-        navigator.sendBeacon(BEACON_URL, JSON.stringify({
-          event: 'fechamento',
-          ts: new Date().toISOString()
-        }));
+        navigator.sendBeacon(BEACON_URL, JSON.stringify({event:'fechamento', ts:new Date().toISOString()}));
       } catch(e){}
     }
 
-    // Atualiza último URL para próximo ciclo
-    localStorage.setItem('lastUrl', location.href);
+    localStorage.setItem('lastUrl', currentUrl);
   });
 
-  // Botão limpar logs
+  // Limpar logs
   document.getElementById('clear').addEventListener('click', ()=>{
     localStorage.removeItem('logs');
     localStorage.removeItem('lastUrl');
@@ -125,4 +104,3 @@
 </script>
 </body>
 </html>
-
