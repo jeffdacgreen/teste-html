@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Detector de Fechamento e Navegação</title>
+  <title>Detector de Fechamento e Reload</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background:#fafafa; }
     #log { background:#111; color:#0f0; padding:12px; height:250px; overflow:auto; white-space:pre-wrap; border-radius:6px; }
@@ -11,7 +11,7 @@
 </head>
 <body>
   <h2>Detector de Fechamento, Reload e Navegação</h2>
-  <p>Testes: F5, Ctrl+R, clicar em links, submeter formulários ou fechar a aba.</p>
+  <p>Testes: F5, Ctrl+R, botão de atualizar, digitar a mesma URL, clicar em links ou submeter formulários.</p>
 
   <div id="log"></div>
   <button id="clear">🧹 Limpar logs</button>
@@ -46,34 +46,23 @@
   } catch(e){}
 
   // Flags proativas
-  let isReload = false;
   let isNavClick = false;
   let isFormSubmit = false;
   let isHistoryNav = false;
 
-  // Captura teclas F5 e Ctrl/Meta+R
-  window.addEventListener('keydown', (ev) => {
-    if (ev.key === 'F5' || ((ev.ctrlKey || ev.metaKey) && (ev.key==='r' || ev.key==='R'))) {
-      isReload = true;
-      append('FLAG: Tecla de reload detectada (F5 ou Ctrl/Meta+R)');
-    }
-  }, {capture:true});
-
-  // Captura cliques em links que abrem na mesma aba
+  // Captura clique em links
   document.addEventListener('click', (ev) => {
-    try {
-      const a = ev.target.closest && ev.target.closest('a[href]');
-      if(a && a.getAttribute('target')!=='_blank'){
-        isNavClick = true;
-        append(`FLAG: Clique em link detectado (href=${a.getAttribute('href')})`);
-      }
-    } catch(e){}
+    const a = ev.target.closest && ev.target.closest('a[href]');
+    if(a && a.getAttribute('target')!=='_blank'){
+      isNavClick = true;
+      append('HOUVE MUDANÇA DE URL');
+    }
   }, true);
 
-  // Captura submissões de forms
+  // Captura submit de forms
   document.addEventListener('submit', (ev)=>{
     isFormSubmit = true;
-    append('FLAG: Form submit detectado');
+    append('UM FORMULÁRIO FOI CLICADO');
   }, true);
 
   // Captura navegações via history API (SPAs)
@@ -82,49 +71,44 @@
     const _replace = history.replaceState;
     history.pushState = function(){
       isHistoryNav = true;
-      append('FLAG: history.pushState detectado');
+      append('HOUVE MUDANÇA DE URL');
       return _push.apply(this, arguments);
     };
     history.replaceState = function(){
       isHistoryNav = true;
-      append('FLAG: history.replaceState detectado');
+      append('HOUVE MUDANÇA DE URL');
       return _replace.apply(this, arguments);
     };
     window.addEventListener('popstate', ()=>{
       isHistoryNav = true;
-      append('FLAG: popstate detectado');
+      append('HOUVE MUDANÇA DE URL');
     });
   })();
 
-  // Intercepta location.reload()
-  (function(){
-    const _reload = location.reload;
-    location.reload = function(){
-      isReload = true;
-      append('FLAG: location.reload() detectado');
-      return _reload.apply(this, arguments);
-    };
-  })();
-
   // beforeunload: decide se é fechamento ou reload/navegação
-  window.addEventListener('beforeunload', (ev)=>{
-    append('beforeunload disparado. Flags => reload:'+isReload+', navClick:'+isNavClick+', formSubmit:'+isFormSubmit+', historyNav:'+isHistoryNav);
-    const isNavigation = isReload || isNavClick || isFormSubmit || isHistoryNav;
+  window.addEventListener('beforeunload', ()=>{
+    const perfNav = performance.getEntriesByType("navigation")[0];
+    const navType = perfNav?.type || "navigate";
+    const lastUrl = localStorage.getItem('lastUrl') || location.href;
 
-    if(isNavigation){
-      append('DECISÃO: Reload/Navegação. Não é fechamento.');
-    } else {
-      append('DECISÃO: Provável fechamento de aba. Log registrado.');
-      // Exemplo de sendBeacon (opcional)
-      try {
-        navigator.sendBeacon('/fake-endpoint', JSON.stringify({event:'fechamento', ts: new Date().toISOString()}));
-      } catch(e){}
+    const isReload = (navType === "reload") || (navType==="navigate" && lastUrl === location.href);
+    const isNavigation = isNavClick || isFormSubmit || isHistoryNav || isReload;
+
+    if(isReload){
+      append('A PÁGINA FOI ATUALIZADA COM F5 (OU CTRL+R, POR EXEMPLO)');
+    } else if(!isNavigation){
+      append('A PÁGINA FECHOU');
+      try { navigator.sendBeacon('/fake-endpoint', JSON.stringify({event:'fechamento', ts:new Date().toISOString()})); } catch(e){}
     }
+
+    // Atualiza último URL para próximo ciclo
+    localStorage.setItem('lastUrl', location.href);
   });
 
   // Botão limpar logs
   document.getElementById('clear').addEventListener('click', ()=>{
     localStorage.removeItem('logs');
+    localStorage.removeItem('lastUrl');
     logDiv.innerText = '';
     append('Logs limpos manualmente.');
   });
