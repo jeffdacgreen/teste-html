@@ -50,6 +50,11 @@
   let isFormSubmit = false;
   let isReload = false;
 
+  // Heartbeat: atualiza timestamp a cada 500ms
+  setInterval(() => {
+    localStorage.setItem('heartbeat', Date.now());
+  }, 500);
+
   // Detecta clique em links
   document.addEventListener('click', ev => {
     const a = ev.target.closest && ev.target.closest('a[href]');
@@ -73,28 +78,39 @@
     }
   }, {capture:true});
 
-  // beforeunload
-  window.addEventListener('beforeunload', ()=>{
-    const lastUrl = localStorage.getItem('lastUrl') || location.href;
-    const currentUrl = location.href;
-    const navReload = (lastUrl === currentUrl && isReload);
+  // Função para enviar beacon
+  function sendBeacon(eventType){
+    try {
+      navigator.sendBeacon(BEACON_URL, JSON.stringify({event:eventType, ts:new Date().toISOString()}));
+    } catch(e){}
+  }
 
-    if(navReload){
-      // Já logado via keydown
-    } else if(!isNavClick && !isFormSubmit && !isReload){
+  // unload
+  window.addEventListener('unload', ()=>{
+    const lastHeartbeat = parseInt(localStorage.getItem('heartbeat')||0,10);
+    const now = Date.now();
+    const heartbeatThreshold = 1000; // 1s
+
+    const probableReload = (isReload || (now - lastHeartbeat < heartbeatThreshold));
+
+    if(probableReload){
+      append('A PÁGINA FOI RECARREGADA (provável F5, Ctrl+R ou botão atualizar)');
+      sendBeacon('reload');
+    } else if(!isNavClick && !isFormSubmit){
       append('A PÁGINA FECHOU');
-      try {
-        navigator.sendBeacon(BEACON_URL, JSON.stringify({event:'fechamento', ts:new Date().toISOString()}));
-      } catch(e){}
+      sendBeacon('fechamento');
     }
-
-    localStorage.setItem('lastUrl', currentUrl);
+    // Limpa flags
+    isNavClick = false;
+    isFormSubmit = false;
+    isReload = false;
   });
 
   // Limpar logs
   document.getElementById('clear').addEventListener('click', ()=>{
     localStorage.removeItem('logs');
     localStorage.removeItem('lastUrl');
+    localStorage.removeItem('heartbeat');
     logDiv.innerText = '';
     append('Logs limpos manualmente.');
   });
