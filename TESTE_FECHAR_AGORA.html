@@ -2,85 +2,135 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Detecção de Fechamento, Reload e Mudança de URL</title>
+  <title>Detector de Fechamento e Navegação</title>
   <style>
-    body { font-family: sans-serif; margin: 30px; background: #fafafa; }
-    #log {
-      background: #111;
-      color: #0f0;
-      padding: 15px;
-      border-radius: 8px;
-      height: 250px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-    }
-    button { margin-top: 10px; padding: 8px 12px; }
+    body { font-family: Arial, sans-serif; margin: 20px; background:#fafafa; }
+    #log { background:#111; color:#0f0; padding:12px; height:250px; overflow:auto; white-space:pre-wrap; border-radius:6px; }
+    button, a { margin-top:8px; display:inline-block; }
   </style>
 </head>
 <body>
-  <h2>Teste de eventos de descarregamento</h2>
-  <p>Tente recarregar (F5), mudar de URL ou fechar a aba para ver o log.</p>
+  <h2>Detector de Fechamento, Reload e Navegação</h2>
+  <p>Testes: F5, Ctrl+R, clicar em links, submeter formulários ou fechar a aba.</p>
 
   <div id="log"></div>
   <button id="clear">🧹 Limpar logs</button>
+  <p><a href="https://example.com" target="_self">Link (mesma aba) — testar navegação</a></p>
 
-  <script>
-    const logDiv = document.getElementById("log");
-    const clearBtn = document.getElementById("clear");
+  <form id="demoForm">
+    <input name="q" placeholder="Teste" />
+    <button type="submit">Enviar form</button>
+  </form>
 
-    function log(msg) {
-      const time = new Date().toLocaleTimeString();
-      const entry = `[${time}] ${msg}`;
-      logDiv.innerHTML += entry + "\n";
+<script>
+(function(){
+  const logDiv = document.getElementById('log');
 
-      const logs = JSON.parse(localStorage.getItem("logs") || "[]");
-      logs.push(entry);
-      localStorage.setItem("logs", JSON.stringify(logs));
+  // Função para adicionar log na tela e no localStorage
+  function append(msg){
+    const s = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    logDiv.innerText += s + "\n";
+    logDiv.scrollTop = logDiv.scrollHeight;
+    try {
+      const arr = JSON.parse(localStorage.getItem('logs')||'[]');
+      arr.push(s);
+      localStorage.setItem('logs', JSON.stringify(arr));
+    } catch(e){}
+    console.log(s);
+  }
 
-      logDiv.scrollTop = logDiv.scrollHeight;
-      console.log(entry);
+  // Exibe logs antigos
+  try {
+    const old = JSON.parse(localStorage.getItem('logs')||'[]');
+    if(old.length) logDiv.innerText = old.join("\n") + "\n";
+  } catch(e){}
+
+  // Flags proativas
+  let isReload = false;
+  let isNavClick = false;
+  let isFormSubmit = false;
+  let isHistoryNav = false;
+
+  // Captura teclas F5 e Ctrl/Meta+R
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'F5' || ((ev.ctrlKey || ev.metaKey) && (ev.key==='r' || ev.key==='R'))) {
+      isReload = true;
+      append('FLAG: Tecla de reload detectada (F5 ou Ctrl/Meta+R)');
     }
+  }, {capture:true});
 
-    // Mostra logs antigos
-    const oldLogs = JSON.parse(localStorage.getItem("logs") || "[]");
-    if (oldLogs.length) logDiv.innerHTML = oldLogs.join("\n") + "\n";
+  // Captura cliques em links que abrem na mesma aba
+  document.addEventListener('click', (ev) => {
+    try {
+      const a = ev.target.closest && ev.target.closest('a[href]');
+      if(a && a.getAttribute('target')!=='_blank'){
+        isNavClick = true;
+        append(`FLAG: Clique em link detectado (href=${a.getAttribute('href')})`);
+      }
+    } catch(e){}
+  }, true);
 
-    // Detecta tipo de navegação atual
-    const navType = performance.getEntriesByType("navigation")[0]?.type || "navigate";
-    log(`Navegação atual: ${navType}`);
+  // Captura submissões de forms
+  document.addEventListener('submit', (ev)=>{
+    isFormSubmit = true;
+    append('FLAG: Form submit detectado');
+  }, true);
 
-    // Verifica se houve reload
-    if (navType === "reload") {
-      log("🔁 Recarregamento detectado (F5)");
+  // Captura navegações via history API (SPAs)
+  (function(){
+    const _push = history.pushState;
+    const _replace = history.replaceState;
+    history.pushState = function(){
+      isHistoryNav = true;
+      append('FLAG: history.pushState detectado');
+      return _push.apply(this, arguments);
+    };
+    history.replaceState = function(){
+      isHistoryNav = true;
+      append('FLAG: history.replaceState detectado');
+      return _replace.apply(this, arguments);
+    };
+    window.addEventListener('popstate', ()=>{
+      isHistoryNav = true;
+      append('FLAG: popstate detectado');
+    });
+  })();
+
+  // Intercepta location.reload()
+  (function(){
+    const _reload = location.reload;
+    location.reload = function(){
+      isReload = true;
+      append('FLAG: location.reload() detectado');
+      return _reload.apply(this, arguments);
+    };
+  })();
+
+  // beforeunload: decide se é fechamento ou reload/navegação
+  window.addEventListener('beforeunload', (ev)=>{
+    append('beforeunload disparado. Flags => reload:'+isReload+', navClick:'+isNavClick+', formSubmit:'+isFormSubmit+', historyNav:'+isHistoryNav);
+    const isNavigation = isReload || isNavClick || isFormSubmit || isHistoryNav;
+
+    if(isNavigation){
+      append('DECISÃO: Reload/Navegação. Não é fechamento.');
     } else {
-      const lastExit = localStorage.getItem("lastExitType");
-      if (lastExit === "navigate") {
-        log("🔀 Mudança de URL detectada");
-      } else if (lastExit === "close") {
-        log("❌ Provável fechamento de aba/janela");
-      } else {
-        log("🆕 Primeira carga da página");
-      }
+      append('DECISÃO: Provável fechamento de aba. Log registrado.');
+      // Exemplo de sendBeacon (opcional)
+      try {
+        navigator.sendBeacon('/fake-endpoint', JSON.stringify({event:'fechamento', ts: new Date().toISOString()}));
+      } catch(e){}
     }
+  });
 
-    // Antes de sair
-    window.addEventListener("beforeunload", () => {
-      // Marcamos que o usuário está saindo via navegação
-      const nextType = performance.getEntriesByType("navigation")[0]?.type;
-      if (nextType === "reload") {
-        localStorage.setItem("lastExitType", "reload");
-      } else {
-        // Pode ser navegação ou fechamento
-        localStorage.setItem("lastExitType", "close");
-      }
-    });
+  // Botão limpar logs
+  document.getElementById('clear').addEventListener('click', ()=>{
+    localStorage.removeItem('logs');
+    logDiv.innerText = '';
+    append('Logs limpos manualmente.');
+  });
 
-    // Limpar logs manualmente
-    clearBtn.addEventListener("click", () => {
-      localStorage.removeItem("logs");
-      logDiv.textContent = "";
-      log("🧹 Logs limpos manualmente.");
-    });
-  </script>
+  append('Detector inicializado.');
+})();
+</script>
 </body>
 </html>
